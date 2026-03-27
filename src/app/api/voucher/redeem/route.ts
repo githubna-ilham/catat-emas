@@ -42,13 +42,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (voucher.is_used) {
+  // Cek kuota
+  if (voucher.used_count >= voucher.max_usage) {
     return NextResponse.json(
-      { success: false, error: "Kode voucher sudah digunakan" },
+      { success: false, error: "Kuota voucher sudah habis" },
       { status: 409 }
     );
   }
 
+  // Cek expired
   if (voucher.expires_at && new Date(voucher.expires_at) < new Date()) {
     return NextResponse.json(
       { success: false, error: "Kode voucher sudah expired" },
@@ -56,24 +58,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Cek apakah device ini sudah pernah redeem voucher yang sama
+  const { data: existing } = await supabase
+    .from("device_subscriptions")
+    .select("id")
+    .eq("device_id", device_id)
+    .eq("voucher_id", voucher.id)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    return NextResponse.json(
+      { success: false, error: "Device ini sudah pernah menggunakan voucher ini" },
+      { status: 409 }
+    );
+  }
+
   const now = new Date();
   const subscriptionExpiresAt = computeExpiresAt(voucher.type, now);
 
-  // Update voucher as used
-  const { error: updateError } = await supabase
+  // Increment used_count dengan optimistic lock
+  const { error: updateError, data: updated } = await supabase
     .from("vouchers")
-    .update({
-      is_used: true,
-      used_by_device_id: device_id,
-      redeemed_at: now.toISOString(),
-    })
+    .update({ used_count: voucher.used_count + 1 })
     .eq("id", voucher.id)
-    .eq("is_used", false); // optimistic lock
+    .lt("used_count", voucher.max_usage)
+    .select("id");
 
-  if (updateError) {
+  if (updateError || !updated || updated.length === 0) {
     return NextResponse.json(
-      { success: false, error: "Gagal redeem voucher, coba lagi" },
-      { status: 500 }
+      { success: false, error: "Kuota voucher sudah habis" },
+      { status: 409 }
     );
   }
 
@@ -107,6 +121,7 @@ export async function POST(request: NextRequest) {
     data: {
       type: voucher.type,
       expires_at: subscriptionExpiresAt,
+      remaining_quota: voucher.max_usage - voucher.used_count - 1,
       message: messages[voucher.type] ?? "Selamat! Voucher berhasil digunakan.",
     },
   });

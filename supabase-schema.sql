@@ -28,9 +28,8 @@ CREATE TABLE vouchers (
   id BIGSERIAL PRIMARY KEY,
   code TEXT UNIQUE NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('premium_lifetime', 'premium_30d', 'premium_365d')),
-  is_used BOOLEAN DEFAULT false,
-  used_by_device_id TEXT,
-  redeemed_at TIMESTAMPTZ,
+  max_usage INT NOT NULL DEFAULT 1,
+  used_count INT NOT NULL DEFAULT 0,
   expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );

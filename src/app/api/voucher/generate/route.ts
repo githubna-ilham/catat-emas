@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { type?: string; count?: number; prefix?: string; expires_at?: string };
+  let body: { type?: string; count?: number; prefix?: string; expires_at?: string; max_usage?: number };
   try {
     body = await request.json();
   } catch {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { type, count = 1, prefix = "EMAS", expires_at } = body;
+  const { type, count = 1, prefix = "EMAS", expires_at, max_usage = 1 } = body;
 
   if (!type || !VALID_TYPES.includes(type)) {
     return NextResponse.json(
@@ -40,6 +40,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (max_usage < 1 || max_usage > 10000) {
+    return NextResponse.json(
+      { success: false, error: "max_usage harus antara 1 - 10000" },
+      { status: 400 }
+    );
+  }
+
   const supabase = getSupabase();
   const codes: string[] = [];
   const rows = [];
@@ -50,7 +57,8 @@ export async function POST(request: NextRequest) {
     rows.push({
       code,
       type,
-      is_used: false,
+      max_usage,
+      used_count: 0,
       expires_at: expires_at ?? null,
     });
   }
